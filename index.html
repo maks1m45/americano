@@ -211,6 +211,17 @@ button,input,.score-input{touch-action:manipulation}
 .courts-hint.ok{color:var(--accent)}
 .courts-hint.warn{color:var(--gold)}
 
+.court-names{margin-top:14px;display:none;flex-direction:column;gap:9px}
+.court-names.show{display:flex}
+.court-names .cn-label{font-size:12.5px;font-weight:700;color:var(--text-dim)}
+.court-names .cn-label b{color:var(--text-faint);font-weight:600}
+.court-names .cn-row{display:flex;flex-wrap:wrap;gap:8px}
+.court-names .cn-item{display:flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:5px 10px;transition:border-color .15s}
+.court-names .cn-item:focus-within{border-color:var(--accent)}
+.court-names .cn-item .ic{font-size:14px}
+.court-names .cn-item input{width:72px;background:transparent;border:none;color:var(--text);font-size:16px;font-weight:700;padding:5px 2px;min-height:38px}
+.court-names .cn-item input:focus{outline:none}
+
 .avatar{
   border-radius:50%;flex:none;display:grid;place-items:center;
   font-weight:800;line-height:1;letter-spacing:-.02em;
@@ -470,6 +481,8 @@ button,input,.score-input{touch-action:manipulation}
 
       <div class="courts-hint" id="courtsHint"></div>
 
+      <div class="court-names" id="courtNames"></div>
+
       <div class="players-head">
         <h3 class="section-title" style="margin:0"><span class="dot"></span>Игроки</h3>
         <span class="count" id="playerCount">0</span>
@@ -699,6 +712,7 @@ function generateSchedule(playerIdx, courts, rounds){
    ============================================================ */
 let tournament = null;          // текущий сгенерированный турнир
 let draftPlayers = [];          // редактируемый список на экране настроек
+let draftCourtNames = [];       // номера/названия кортов на экране настроек
 let prevLeaderId = null;
 let wasComplete = false;
 let saveTimer = null;
@@ -794,6 +808,27 @@ function updateCourtsHint(){
       " одновременно — чтобы задействовать " + courts + ", нужно " + (courts * 4) + "+ игроков";
   }
 }
+function renderCourtNames(){
+  const wrap = $("courtNames"); if (!wrap) return;
+  const courts = clampInt($("fCourts").value, 1, 16, 2);
+  for (let i = 0; i < courts; i++){ if (draftCourtNames[i] == null || draftCourtNames[i] === "") draftCourtNames[i] = String(i + 1); }
+  draftCourtNames.length = courts;
+  wrap.innerHTML = "";
+  wrap.classList.add("show");
+  wrap.appendChild(el("div", "cn-label")).innerHTML = "Номера кортов <b>(как на площадке)</b>";
+  const row = el("div", "cn-row");
+  for (let i = 0; i < courts; i++){
+    const item = el("div", "cn-item");
+    item.appendChild(el("span", "ic", "🏟"));
+    const inp = el("input");
+    inp.type = "text"; inp.value = draftCourtNames[i]; inp.maxLength = 12;
+    inp.setAttribute("aria-label", "Название корта " + (i + 1));
+    inp.addEventListener("input", () => { draftCourtNames[i] = inp.value; });
+    item.appendChild(inp);
+    row.appendChild(item);
+  }
+  wrap.appendChild(row);
+}
 function addPlayer(){
   if (draftPlayers.length >= 24) return toast("Максимум 24 игрока", "err");
   draftPlayers.push({ id: uid(), name: "" });
@@ -808,6 +843,7 @@ function showSetup(){
   $("tournamentScreen").classList.add("hidden");
   $("backToTournamentBtn").classList.toggle("hidden", !tournament);
   renderPlayers();
+  renderCourtNames();
   window.scrollTo({ top:0, behavior:"smooth" });
 }
 
@@ -839,6 +875,7 @@ function onGenerate(){
   const roundsRaw = $("fRounds").value.trim();
   const rounds = roundsRaw ? clampInt(roundsRaw, 1, 30, draftPlayers.length) : draftPlayers.length;
   const name = ($("fName").value.trim()) || "Турнир Americano";
+  const courtNames = Array.from({ length: courts }, (_, i) => (draftCourtNames[i] && String(draftCourtNames[i]).trim()) || String(i + 1));
 
   const players = draftPlayers.map((p, i) => ({ id: p.id || uid(), name: p.name.trim(), color: AVATAR_COLORS[i % AVATAR_COLORS.length] }));
   const idxOrder = players.map((_, i) => i);
@@ -856,7 +893,7 @@ function onGenerate(){
   }));
 
   tournament = {
-    version: 1, name, courts, pointsToWin: points, rounds: rds.length,
+    version: 1, name, courts, courtNames, pointsToWin: points, rounds: rds.length,
     players, rounds: rds,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
   };
@@ -940,7 +977,8 @@ function matchEl(m, ri, mi){
 
   const top = el("div", "match-top");
   const court = el("div", "court");
-  court.innerHTML = "🏟 Корт <b>" + m.court + "</b>";
+  const cname = (tournament.courtNames && tournament.courtNames[m.court - 1]) || m.court;
+  court.innerHTML = "🏟 Корт <b>" + escapeHtml(String(cname)) + "</b>";
   top.appendChild(court);
   const status = el("div", "status live", "идёт");
   top.appendChild(status);
@@ -1168,6 +1206,7 @@ function editPlayers(){
   $("fPoints").value = tournament.pointsToWin;
   $("fRounds").value = tournament.rounds.length;
   draftPlayers = tournament.players.map(p => ({ id: p.id, name: p.name }));
+  draftCourtNames = Array.isArray(tournament.courtNames) ? tournament.courtNames.slice() : [];
   $("setupError").classList.remove("show");
   showSetup();
 }
@@ -1199,6 +1238,7 @@ function importJSON(file){
       if (!t || !Array.isArray(t.players) || !Array.isArray(t.rounds)) throw new Error("bad");
       // backfill colors if missing
       t.players.forEach((p, i) => { if (!p.color) p.color = AVATAR_COLORS[i % AVATAR_COLORS.length]; if (!p.id) p.id = uid(); });
+      if (!Array.isArray(t.courtNames) || t.courtNames.length !== t.courts) t.courtNames = Array.from({ length: t.courts || 0 }, (_, i) => String(i + 1));
       if (tournament && hasAnyScore(tournament) && !confirm("Заменить текущий турнир импортированным?")) return;
       tournament = t; prevLeaderId = null; wasComplete = false;
       persist(); renderTournament();
@@ -1252,7 +1292,7 @@ function toast(msg, kind){
 function bind(){
   $("themeBtn").addEventListener("click", toggleTheme);
   $("addPlayerBtn").addEventListener("click", addPlayer);
-  $("fCourts").addEventListener("input", updateCourtsHint);
+  $("fCourts").addEventListener("input", () => { renderCourtNames(); updateCourtsHint(); });
   $("generateBtn").addEventListener("click", onGenerate);
   $("backToTournamentBtn").addEventListener("click", () => { if (tournament) renderTournament(); });
   $("saveBtn").addEventListener("click", saveNow);
@@ -1278,6 +1318,7 @@ function boot(){
   if (stored){
     tournament = stored;
     tournament.players.forEach((p,i)=>{ if(!p.color) p.color = AVATAR_COLORS[i % AVATAR_COLORS.length]; });
+    if (!Array.isArray(tournament.courtNames) || tournament.courtNames.length !== tournament.courts) tournament.courtNames = Array.from({ length: tournament.courts || 0 }, (_, i) => String(i + 1));
     renderTournament();
     const data = computeStats(tournament);
     wasComplete = data.total > 0 && data.played === data.total;
