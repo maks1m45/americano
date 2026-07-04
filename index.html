@@ -206,6 +206,11 @@ button,input,.score-input{touch-action:manipulation}
 .add-row{margin-top:11px}
 .add-row .btn{width:100%;border-style:dashed}
 
+.courts-hint{margin-top:12px;font-size:12.5px;font-weight:600;color:var(--text-dim);display:flex;align-items:flex-start;gap:7px;line-height:1.35}
+.courts-hint:empty{display:none}
+.courts-hint.ok{color:var(--accent)}
+.courts-hint.warn{color:var(--gold)}
+
 .avatar{
   border-radius:50%;flex:none;display:grid;place-items:center;
   font-weight:800;line-height:1;letter-spacing:-.02em;
@@ -462,6 +467,8 @@ button,input,.score-input{touch-action:manipulation}
           <input class="input mono" id="fRounds" type="number" inputmode="numeric" min="1" max="30" step="1" placeholder="авто" />
         </div>
       </div>
+
+      <div class="courts-hint" id="courtsHint"></div>
 
       <div class="players-head">
         <h3 class="section-title" style="margin:0"><span class="dot"></span>Игроки</h3>
@@ -769,6 +776,23 @@ function renderPlayers(){
     list.appendChild(row);
   });
   $("playerCount").textContent = draftPlayers.length + " " + plural(draftPlayers.length, "игрок", "игрока", "игроков");
+  updateCourtsHint();
+}
+function updateCourtsHint(){
+  const box = $("courtsHint"); if (!box) return;
+  const courts = clampInt($("fCourts").value, 1, 16, 2);
+  const n = draftPlayers.length;
+  if (n < 4 || courts <= 1){ box.className = "courts-hint"; box.textContent = ""; return; }
+  const active = Math.min(n - (n % 4), courts * 4);
+  const used = active / 4;
+  if (used >= courts){
+    box.className = "courts-hint ok";
+    box.textContent = "✓ Все " + courts + " " + plural(courts, "корт", "корта", "кортов") + " задействуются одновременно";
+  } else {
+    box.className = "courts-hint warn";
+    box.textContent = "⚠ Игроков хватит на " + used + " " + plural(used, "корт", "корта", "кортов") +
+      " одновременно — чтобы задействовать " + courts + ", нужно " + (courts * 4) + "+ игроков";
+  }
 }
 function addPlayer(){
   if (draftPlayers.length >= 24) return toast("Максимум 24 игрока", "err");
@@ -1228,6 +1252,7 @@ function toast(msg, kind){
 function bind(){
   $("themeBtn").addEventListener("click", toggleTheme);
   $("addPlayerBtn").addEventListener("click", addPlayer);
+  $("fCourts").addEventListener("input", updateCourtsHint);
   $("generateBtn").addEventListener("click", onGenerate);
   $("backToTournamentBtn").addEventListener("click", () => { if (tournament) renderTournament(); });
   $("saveBtn").addEventListener("click", saveNow);
